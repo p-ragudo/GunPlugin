@@ -5,10 +5,8 @@ import org.bukkit.plugin.java.JavaPlugin
 class GunPlugin : JavaPlugin() {
 
     override fun onEnable() {
-        Bukkit.getLogger().info("")
-    }
+        Bukkit.getLogger().info("[GunPlugin] Successfully loaded!")
 
-    override fun onDisable() {
-        // Plugin shutdown logic
+        Bukkit.getPluginManager().registerEvents(LaunchArrow(this), this)
     }
 }
