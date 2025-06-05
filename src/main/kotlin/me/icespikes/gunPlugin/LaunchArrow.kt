@@ -6,6 +6,7 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Arrow
 import org.bukkit.entity.LivingEntity
+import org.bukkit.entity.Snowball
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
@@ -17,8 +18,9 @@ import org.bukkit.plugin.java.JavaPlugin
 class LaunchArrow(plugin: JavaPlugin) : Listener {
 
     private val baseDamage = 1.0
-    private val damageMultiplier = 0.1
-    private val damageKey = NamespacedKey(plugin, "arrow_damage")
+    private val damageMultiplier = 100
+    private val damageKey = NamespacedKey(plugin, "bullet_damage")
+    private val bulletId = NamespacedKey(plugin, "bullet_id")
 
     @EventHandler
     fun onPlayerShoot(event: PlayerInteractEvent) {
@@ -27,29 +29,27 @@ class LaunchArrow(plugin: JavaPlugin) : Listener {
         if (player.inventory.itemInMainHand.type != Material.STICK) return
         if (event.action != Action.LEFT_CLICK_AIR && event.action != Action.LEFT_CLICK_BLOCK) return
 
-        val arrow = player.launchProjectile(Arrow::class.java).apply {
-            velocity = player.eyeLocation.direction.multiply(10)
+        val bullet = player.launchProjectile(Snowball::class.java).apply {
+            velocity = player.eyeLocation.direction.multiply(4.5)
 
             val speed = velocity.length()
             val calculatedDamage = baseDamage + (speed * damageMultiplier)
             persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
-
-            world.spawnParticle(Particle.SMOKE, location, 5)
         }
 
         player.world.playSound(player.location, Sound.ENTITY_GENERIC_EXPLODE, 1f, 0.5f)
     }
 
     @EventHandler
-    fun onArrowHit(event: ProjectileHitEvent) {
-        if (event.entity !is Arrow) return
-        val arrow = event.entity as Arrow
+    fun onSnowballHit(event: ProjectileHitEvent) {
+        if(event.entity !is Snowball) return
+        val bullet = event.entity as Snowball
         val hitEntity = event.hitEntity as? LivingEntity ?: return
 
-        val damage = arrow.persistentDataContainer.get(damageKey, PersistentDataType.DOUBLE) ?: baseDamage
+        val damage = bullet.persistentDataContainer.get(damageKey, PersistentDataType.DOUBLE) ?: baseDamage
         hitEntity.damage(damage)
 
-        arrow.world.spawnParticle(Particle.SMOKE, arrow.location, 3)
-        arrow.remove()
+        bullet.world.spawnParticle(Particle.SMOKE, bullet.location, 3)
+        bullet.remove()
     }
 }
