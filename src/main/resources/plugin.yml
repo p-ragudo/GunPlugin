@@ -2,3 +2,6 @@ name: GunPlugin
 version: '1.0'
 main: me.icespikes.gunPlugin.GunPlugin
 api-version: '1.21'
+commands:
+  give_gun:
+    description: 'gives a gun'

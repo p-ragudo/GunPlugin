@@ -1,7 +1,6 @@
 package me.icespikes.gunPlugin
 
 import org.bukkit.Bukkit
-import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.entity.LivingEntity
@@ -12,6 +11,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.potion.PotionEffect
@@ -23,28 +23,38 @@ import java.util.*
 class AutoShooter(private val plugin: JavaPlugin) : Listener {
     private var shootTask: BukkitTask ?= null
 
-    private val shootingPlayers = mutableSetOf<UUID>()
-    private val shootSpeed = 3L
+    private val shootingPlayers = mutableMapOf<UUID, Long>()
+    private val focusedPlayers = mutableSetOf<UUID>()
 
     private val baseDamage = 1.0
-    private val damageMultiplier = 1
     private val damageKey = NamespacedKey(plugin, "bullet_damage")
 
-    private var isShooting = false
-    private var isFocused = false
+    private var currentTick = 0L
 
     private fun startTask() {
         if(shootTask != null) return
 
-        Bukkit.getLogger().info("Shoot Task is not null. Starting task")
         shootTask = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
-            for(playerId in shootingPlayers.toList()) {
+            if(shootingPlayers.isEmpty()) {
+                currentTick = 0L
+                disableTask()
+                return@Runnable
+            }
+
+            currentTick++
+
+            for((playerId, nextShootTick) in shootingPlayers.toList().iterator()) {
                 val player = Bukkit.getPlayer(playerId) ?: continue
 
-                if(player.inventory.itemInMainHand.type != Material.STICK) {
+                val gun = detectGun(player)
+                if(gun == null) {
                     shootingPlayers.remove(playerId)
+                    focusedPlayers.remove(playerId)
+                    removePotionEffects(player)
                     continue
                 }
+
+                if(currentTick < nextShootTick) continue
 
                 val direction = player.eyeLocation.direction.normalize()
                 val spawnOffset = direction.clone().multiply(0.8).add(Vector(0.0, -0.2,0.0))
@@ -53,15 +63,21 @@ class AutoShooter(private val plugin: JavaPlugin) : Listener {
                 val snowBall = player.world.spawn(spawnLocation, Snowball::class.java)
 
                 snowBall.apply{
-                    velocity = player.eyeLocation.direction.multiply(4.5)
+                    velocity = player.eyeLocation.direction.multiply(gun.velocity)
                     val speed = velocity.length()
-                    val calculatedDamage = baseDamage + (speed * damageMultiplier)
+                    val calculatedDamage = gun.baseDamage + (speed * gun.damageMultiplier)
                     persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
                 }
 
+                if(gun.name == "Sniper") {
+                    shootingPlayers.remove(playerId)
+                    continue
+                }
+
                 addPotionEffects(player)
+                shootingPlayers[playerId] = currentTick + gun.shootDelayTicks
             }
-        }, 0L, shootSpeed)
+        }, 0L, 1L)
     }
 
     private fun disableTask() {
@@ -89,51 +105,66 @@ class AutoShooter(private val plugin: JavaPlugin) : Listener {
 
     @EventHandler
     fun onLeftClick(event: PlayerInteractEvent) {
-        if(event.player.inventory.itemInMainHand.type != Material.STICK) {
-            removePotionEffects(event.player)
-            shootingPlayers.remove(event.player.uniqueId)
-            disableTask()
+        if(event.hand != EquipmentSlot.HAND) return
+
+        val gun = detectGun(event.player) ?: run {
+            Bukkit.getLogger().info("detectGun() returned null")
             return
         }
-        if(event.action != Action.LEFT_CLICK_AIR && event.action != Action.LEFT_CLICK_BLOCK) {
-            removePotionEffects(event.player)
-            shootingPlayers.remove(event.player.uniqueId)
-            disableTask()
+        val item = event.player.inventory.itemInMainHand
+        if(item.itemMeta!!.displayName != gun.name) {
+            Bukkit.getLogger().info("Gun name not equals to gun.name")
+            return
+        }
+        if(item.itemMeta!!.lore != gun.lore) {
+            Bukkit.getLogger().info("Gun lore not equals to gun.lore")
             return
         }
 
-        shootingPlayers.add(event.player.uniqueId)
-        println("${event.player.displayName} added to shooting players! with uniqueID ${event.player.uniqueId}")
-        startTask()
+        if(event.action != Action.LEFT_CLICK_AIR && event.action != Action.LEFT_CLICK_BLOCK) return
 
-//        if(isShooting) {
-//            Bukkit.getLogger().info("Left Click. Turn off shooting")
-//            isShooting = false
-//            shootingPlayers.remove(event.player.uniqueId)
-//            disableTask()
-//        } else {
-//            Bukkit.getLogger().info("Left Click. Turn on shooting")
-//            isShooting = true
-//            isFocused = true
-//            shootingPlayers.add(event.player.uniqueId)
-//            println("${event.player.displayName} added to shooting players! with uniqueID ${event.player.uniqueId}")
-//            startTask()
-//        }
+        if(event.player.uniqueId in shootingPlayers) {
+            shootingPlayers.remove(event.player.uniqueId)
+            return
+        } else {
+            shootingPlayers[event.player.uniqueId] = currentTick + gun.shootDelayTicks
+            focusedPlayers.add(event.player.uniqueId)
+            startTask()
+        }
     }
 
     @EventHandler
     fun onRightClick(event: PlayerInteractEvent) {
-        if(isShooting) {
-            isShooting = false
-            isFocused = false
+        if(event.hand != EquipmentSlot.HAND) return
+
+        val gun = detectGun(event.player) ?: run {
+            Bukkit.getLogger().info("detectGun() returned null")
+            return
+        }
+        val item = event.player.inventory.itemInMainHand
+        if(item.itemMeta!!.displayName != gun.name) {
+            Bukkit.getLogger().info("Gun name not equals to gun.name")
+            return
+        }
+        if(item.itemMeta!!.lore != gun.lore) {
+            Bukkit.getLogger().info("Gun lore not equals to gun.lore")
+            return
+        }
+
+        if(event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
+
+        if(event.player.uniqueId in shootingPlayers) {
             removePotionEffects(event.player)
             shootingPlayers.remove(event.player.uniqueId)
-            disableTask()
+            focusedPlayers.remove(event.player.uniqueId)
+            return
         }
-        else if(isFocused) {
-            isFocused = false
+        else if(event.player.uniqueId in focusedPlayers) {
+            focusedPlayers.remove(event.player.uniqueId)
+            removePotionEffects(event.player)
+            return
         } else {
-            isFocused = true
+            focusedPlayers.add(event.player.uniqueId)
             addPotionEffects(event.player)
         }
     }
