@@ -11,6 +11,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerItemHeldEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
@@ -23,66 +24,66 @@ import java.util.*
 class AutoShooter(private val plugin: JavaPlugin) : Listener {
     private var shootTask: BukkitTask ?= null
 
-    private val shootingPlayers = mutableMapOf<UUID, Long>()
+    private val cooldownTracker = mutableMapOf<UUID, Long>()
     private val focusedPlayers = mutableSetOf<UUID>()
+    private val shootingPlayersAutomatic = mutableSetOf<UUID>()
+    private val playerGunMap = mutableMapOf<UUID, Gun>()
 
     private val baseDamage = 1.0
     private val damageKey = NamespacedKey(plugin, "bullet_damage")
 
     private var currentTick = 0L
 
+    init {
+        startTask()
+    }
+
     private fun startTask() {
         if(shootTask != null) return
 
         shootTask = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
-            if(shootingPlayers.isEmpty()) {
-                currentTick = 0L
-                disableTask()
-                return@Runnable
-            }
-
             currentTick++
 
-            for((playerId, nextShootTick) in shootingPlayers.toList().iterator()) {
+            for((playerId, nextShootTick) in cooldownTracker.toList().iterator()) {
                 val player = Bukkit.getPlayer(playerId) ?: continue
 
                 val gun = detectGun(player)
-                if(gun == null) {
-                    shootingPlayers.remove(playerId)
+                val storedGun = playerGunMap[playerId]
+
+                if (gun != storedGun || gun == null) {
+                    cooldownTracker.remove(playerId)
+                    shootingPlayersAutomatic.remove(playerId)
+                    playerGunMap.remove(playerId)
                     focusedPlayers.remove(playerId)
                     removePotionEffects(player)
                     continue
                 }
 
+                if(!gun.isAutomatic && !gun.needsManualFireDelay) continue
                 if(currentTick < nextShootTick) continue
-
-                val direction = player.eyeLocation.direction.normalize()
-                val spawnOffset = direction.clone().multiply(0.8).add(Vector(0.0, -0.2,0.0))
-                val spawnLocation = player.eyeLocation.clone().add(spawnOffset)
-
-                val snowBall = player.world.spawn(spawnLocation, Snowball::class.java)
-
-                snowBall.apply{
-                    velocity = player.eyeLocation.direction.multiply(gun.velocity)
-                    val speed = velocity.length()
-                    val calculatedDamage = gun.baseDamage + (speed * gun.damageMultiplier)
-                    persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
+                if(gun.isAutomatic) {
+                    shoot(player, gun)
+                    cooldownTracker[playerId] = currentTick + gun.shootDelayTicks
+                } else if(gun.needsManualFireDelay) {
+                    cooldownTracker.remove(playerId) // Cooldown expired
                 }
-
-                if(gun.name == "Sniper") {
-                    shootingPlayers.remove(playerId)
-                    continue
-                }
-
-                addPotionEffects(player)
-                shootingPlayers[playerId] = currentTick + gun.shootDelayTicks
             }
         }, 0L, 1L)
     }
 
-    private fun disableTask() {
-        shootTask?.cancel()
-        shootTask = null
+    private fun shoot(player: Player, gun: Gun) {
+        val direction = player.eyeLocation.direction.normalize()
+        val spawnOffset = direction.clone().multiply(0.8).add(Vector(0.0, -0.2,0.0))
+        val spawnLocation = player.eyeLocation.clone().add(spawnOffset)
+
+        val snowBall = player.world.spawn(spawnLocation, Snowball::class.java)
+
+        snowBall.apply{
+            velocity = player.eyeLocation.direction.multiply(gun.velocity)
+            val speed = velocity.length()
+            val calculatedDamage = gun.baseDamage + (speed * gun.damageMultiplier)
+            persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
+        }
     }
 
     private fun addPotionEffects(player: Player) {
@@ -105,67 +106,87 @@ class AutoShooter(private val plugin: JavaPlugin) : Listener {
 
     @EventHandler
     fun onLeftClick(event: PlayerInteractEvent) {
+        val player = event.player
+
         if(event.hand != EquipmentSlot.HAND) return
-
-        val gun = detectGun(event.player) ?: run {
-            Bukkit.getLogger().info("detectGun() returned null")
-            return
-        }
-        val item = event.player.inventory.itemInMainHand
-        if(item.itemMeta!!.displayName != gun.name) {
-            Bukkit.getLogger().info("Gun name not equals to gun.name")
-            return
-        }
-        if(item.itemMeta!!.lore != gun.lore) {
-            Bukkit.getLogger().info("Gun lore not equals to gun.lore")
-            return
-        }
-
+        val gun = detectGun(event.player) ?: return
+        val itemMeta = event.player.inventory.itemInMainHand.itemMeta!!
+        if(itemMeta.displayName != gun.name) return
+        if(itemMeta.lore != gun.lore) return
         if(event.action != Action.LEFT_CLICK_AIR && event.action != Action.LEFT_CLICK_BLOCK) return
 
-        if(event.player.uniqueId in shootingPlayers) {
-            shootingPlayers.remove(event.player.uniqueId)
-            return
-        } else {
-            shootingPlayers[event.player.uniqueId] = currentTick + gun.shootDelayTicks
-            focusedPlayers.add(event.player.uniqueId)
-            startTask()
+        val playerId = player.uniqueId
+        val nextShootTick = cooldownTracker[playerId]
+
+        when {
+            // Case 1: Semi-auto without manual delay — shoot instantly
+            !gun.isAutomatic && !gun.needsManualFireDelay -> {
+                shoot(player, gun)
+                playerGunMap[playerId] = gun
+            }
+
+            // Case 2: Semi-auto with manual delay — shoot only if cooldown expired
+            !gun.isAutomatic && gun.needsManualFireDelay -> {
+                if (nextShootTick == null || currentTick >= nextShootTick) {
+                    shoot(player, gun)
+                    cooldownTracker[playerId] = currentTick + gun.shootDelayTicks
+                    playerGunMap[playerId] = gun
+                }
+            }
+
+            // Case 3: Automatic — start firing
+            gun.isAutomatic && !shootingPlayersAutomatic.contains(playerId) -> {
+                shootingPlayersAutomatic.add(playerId)
+                playerGunMap[playerId] = gun
+                cooldownTracker[playerId] = currentTick
+            }
+
+            // Case 4: Automatic and already shooting — stop firing
+            gun.isAutomatic && shootingPlayersAutomatic.contains(playerId) -> {
+                shootingPlayersAutomatic.remove(playerId)
+                playerGunMap.remove(playerId)
+                cooldownTracker.remove(playerId)
+            }
         }
     }
 
     @EventHandler
     fun onRightClick(event: PlayerInteractEvent) {
         if(event.hand != EquipmentSlot.HAND) return
+        val gun = detectGun(event.player) ?: return
 
-        val gun = detectGun(event.player) ?: run {
-            Bukkit.getLogger().info("detectGun() returned null")
-            return
-        }
-        val item = event.player.inventory.itemInMainHand
-        if(item.itemMeta!!.displayName != gun.name) {
-            Bukkit.getLogger().info("Gun name not equals to gun.name")
-            return
-        }
-        if(item.itemMeta!!.lore != gun.lore) {
-            Bukkit.getLogger().info("Gun lore not equals to gun.lore")
-            return
-        }
+        val itemMeta = event.player.inventory.itemInMainHand.itemMeta!!
+        if(itemMeta.displayName != gun.name) return
+        if(itemMeta.lore != gun.lore) return
 
         if(event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
 
-        if(event.player.uniqueId in shootingPlayers) {
+        if(event.player.uniqueId in focusedPlayers) {
             removePotionEffects(event.player)
-            shootingPlayers.remove(event.player.uniqueId)
             focusedPlayers.remove(event.player.uniqueId)
-            return
-        }
-        else if(event.player.uniqueId in focusedPlayers) {
-            focusedPlayers.remove(event.player.uniqueId)
-            removePotionEffects(event.player)
-            return
-        } else {
+        } else { // Turn on focus
             focusedPlayers.add(event.player.uniqueId)
             addPotionEffects(event.player)
+        }
+    }
+
+    @EventHandler
+    fun onItemSwitchFocusControl(event: PlayerItemHeldEvent){
+        val player = event.player
+        val playerId = player.uniqueId
+
+        if(!focusedPlayers.contains(playerId)) return
+        if(!playerGunMap.contains(playerId)) return
+
+        val oldSlot = player.inventory.getItem(event.previousSlot)
+        val gunOnHand = detectGun(oldSlot)
+
+        val newItem = player.inventory.getItem(event.newSlot)
+        val newItemOnHand = detectGun(newItem)
+
+        if(newItemOnHand == null || newItemOnHand != gunOnHand) {
+            focusedPlayers.remove(playerId)
+            removePotionEffects(player)
         }
     }
 
