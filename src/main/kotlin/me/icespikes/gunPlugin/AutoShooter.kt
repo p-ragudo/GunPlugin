@@ -10,9 +10,11 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.entity.ProjectileHitEvent
+import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerItemHeldEvent
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.potion.PotionEffect
@@ -84,6 +86,17 @@ class AutoShooter(private val plugin: JavaPlugin) : Listener {
             val calculatedDamage = gun.baseDamage + (speed * gun.damageMultiplier)
             persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
         }
+    }
+
+    @EventHandler
+    fun onSniperShoot(event: PlayerDropItemEvent) {
+        val player = event.player
+        val droppedItem = detectGun(event.itemDrop.itemStack)
+
+        if(droppedItem == null) return
+        if(droppedItem == gunRegistry["Sniper"]) shoot(player, droppedItem)
+
+        event.isCancelled = true
     }
 
     private fun addPotionEffects(player: Player) {

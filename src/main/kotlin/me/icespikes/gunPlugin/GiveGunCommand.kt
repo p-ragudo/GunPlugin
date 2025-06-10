@@ -43,7 +43,7 @@ class GiveGunCommand : CommandExecutor{
             val smg = createGunItem(gun, Material.IRON_HOE)
             return smg
         } else if(gunArg == "Sniper") {
-            val sniper = createGunItem(gun, Material.NETHERITE_SWORD)
+            val sniper = createGunItem(gun, Material.SPYGLASS)
             return sniper
         } else {
             return null
