@@ -7,7 +7,7 @@ class GunPlugin : JavaPlugin() {
     override fun onEnable() {
         Bukkit.getLogger().info("[GunPlugin] Successfully loaded!")
 
-        Bukkit.getPluginManager().registerEvents(AutoShooter(this), this)
+        Bukkit.getPluginManager().registerEvents(GunShootListener(this), this)
         getCommand("give_gun")!!.setExecutor(GiveGunCommand())
     }
 }

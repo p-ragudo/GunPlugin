@@ -23,8 +23,9 @@ import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitTask
 import org.bukkit.util.Vector
 import java.util.*
+import kotlin.random.Random
 
-class AutoShooter(private val plugin: JavaPlugin) : Listener {
+class GunShootListener(private val plugin: JavaPlugin) : Listener {
     private var shootTask: BukkitTask ?= null
 
     private val cooldownTracker = mutableMapOf<UUID, Long>()
@@ -86,6 +87,20 @@ class AutoShooter(private val plugin: JavaPlugin) : Listener {
             val speed = velocity.length()
             val calculatedDamage = gun.baseDamage + (speed * gun.damageMultiplier)
             persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
+        }
+
+        if(!gun.isAutomatic) {
+            val loc = player.location.clone()
+
+            val vertRecoil = if(gun.verticalRecoil == null) loc.pitch
+                            else Random.nextDouble(gun.verticalRecoil.first, gun.verticalRecoil.second)
+            val horizRecoil = if(gun.horizontalRecoil == null) loc.yaw
+                            else Random.nextDouble(gun.horizontalRecoil.first, gun.horizontalRecoil.second)
+
+            loc.pitch += vertRecoil.toFloat()
+            loc.yaw += horizRecoil.toFloat()
+
+            player.teleport(loc)
         }
     }
 

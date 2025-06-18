@@ -11,7 +11,9 @@ data class Gun (
     val damageMultiplier: Double,
     val velocity: Double, // Standard is 4.5
     val isAutomatic: Boolean,
-    val needsManualFireDelay: Boolean
+    val needsManualFireDelay: Boolean,
+    val verticalRecoil: Pair<Double, Double>?,
+    val horizontalRecoil: Pair<Double, Double>?,
 )
 
 val pistolLore = listOf("Standard issue firearm", "Deals normal damage")
@@ -19,9 +21,15 @@ val smgLore = listOf("Rapid fire", "Low damage")
 val sniperLore = listOf("Long-range precision", "High damage")
 
 val gunRegistry = mapOf(
-    "Pistol" to Gun("Pistol", pistolLore, 5L, 2.0, 1.0, 4.5, false, true),
-    "SMG" to Gun("SMG", smgLore, 2L, 1.0, 1.0, 4.5, true, false),
-    "Sniper" to Gun("Sniper", sniperLore, 0L, 50.0, 20.0, 50.0, false, false)
+    "Pistol" to Gun("Pistol", pistolLore, 5L, 2.0,
+                1.0, 4.5, false,
+                true, Pair(-5.0, -10.0), Pair(-2.0, 2.0)),
+    "SMG" to Gun("SMG", smgLore, 2L, 1.0,
+                1.0, 4.5, true,
+                false, null, null),
+    "Sniper" to Gun("Sniper", sniperLore, 0L, 50.0,
+                20.0, 50.0, false,
+                false, Pair(-20.0, -35.0), null)
 )
 
 fun detectGun(player: Player) : Gun? {
