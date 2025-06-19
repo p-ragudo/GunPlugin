@@ -3,6 +3,7 @@ package me.icespikes.gunPlugin
 import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
+import org.bukkit.entity.SmallFireball
 import org.bukkit.entity.Snowball
 import org.bukkit.inventory.ItemStack
 
@@ -14,10 +15,6 @@ data class Gun (
     val fireSound: Sound,
     val fireVolume: Float,
     val firePitch: Float,
-
-    val hitSound: Sound,
-    val hitVolume: Float,
-    val hitPitch: Float,
 
     val shootDelayTicks: Long,
     val baseDamage: Double,
@@ -41,10 +38,6 @@ val gunRegistry = mapOf(
         1.0f,
         1.5f,
 
-        Sound.ENTITY_ARROW_HIT,
-        0.8f,
-        1.4f,
-
         5L,
         2.0,
         1.0,
@@ -56,13 +49,9 @@ val gunRegistry = mapOf(
         smgLore,
         Snowball::class.java,
 
-        Sound.BLOCK_NOTE_BLOCK_SNARE,
+        Sound.ENTITY_FIREWORK_ROCKET_SHOOT,
         1.2f,
         1.2f,
-
-        Sound.ENTITY_GENERIC_HURT,
-        1.0f,
-        1.0f,
 
         2L,
         1.0,
@@ -78,10 +67,6 @@ val gunRegistry = mapOf(
         Sound.ENTITY_GENERIC_EXPLODE,
         2.0f,
         1.5f,
-
-        Sound.BLOCK_ANVIL_HIT,
-        1.2f,
-        1.8f,
 
         0L,
         50.0,

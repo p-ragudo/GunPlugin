@@ -1,8 +1,7 @@
 package me.icespikes.gunPlugin
 
-import org.bukkit.Bukkit
-import org.bukkit.NamespacedKey
-import org.bukkit.Particle
+import org.bukkit.*
+import org.bukkit.block.data.type.GlassPane
 import org.bukkit.entity.LivingEntity
 import org.bukkit.entity.Player
 import org.bukkit.entity.Snowball
@@ -100,31 +99,14 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
     fun onSniperShoot(event: PlayerDropItemEvent) {
         val player = event.player
 
-        val droppedItem = detectGun(event.itemDrop.itemStack) ?: run {
-            Bukkit.getLogger().info("Dropped item not detected")
-            return
-        }
+        val sniper = detectGun(event.itemDrop.itemStack) ?: return
 
-        if(droppedItem == gunRegistry["Sniper"]) {
-            shoot(player, droppedItem)
-            player.sendMessage("Shoot")
-        } else {
-            player.sendMessage("Didn't shoot")
-        }
+        if(sniper != gunRegistry["Sniper"]) return
+        shoot(player, sniper)
 
         event.isCancelled = true
-        if(event.isCancelled) player.sendMessage("Event cancelled")
-        else player.sendMessage("Event not cancelled")
-
         focusedPlayers.remove(player.uniqueId)
         removePotionEffects(player)
-
-        player.world.playSound(
-            player.location,
-            droppedItem.fireSound,
-            droppedItem.fireVolume,
-            droppedItem.firePitch
-        )
     }
 
     private fun addPotionEffects(player: Player) {
@@ -257,19 +239,33 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
     fun onSnowballHit(event: ProjectileHitEvent) {
         if(event.entity !is Snowball) return
         val bullet = event.entity as Snowball
-        val hitEntity = event.hitEntity as? LivingEntity ?: return
 
-        val shooter = bullet.shooter as? Player ?: return
-        val gun = detectGun(shooter) ?: return
-        val damage = bullet.persistentDataContainer.get(damageKey, PersistentDataType.DOUBLE) ?: baseDamage
+        val hitEntity = event.hitEntity as? LivingEntity?
+        if(hitEntity != null) {
+            val damage = bullet.persistentDataContainer.get(damageKey, PersistentDataType.DOUBLE) ?: baseDamage
 
-        hitEntity.damage(damage)
-        hitEntity.world.playSound(
-            hitEntity.location,
-            gun.hitSound,
-            gun.hitVolume,
-            gun.hitPitch
-        )
+            hitEntity.damage(damage)
+            hitEntity.world.playSound(
+                hitEntity.location,
+                Sound.ENTITY_GENERIC_HURT,
+                1.0f,
+                1.0f
+            )
+        }
+
+        val hitBlock = event.hitBlock
+        if(hitBlock != null) {
+            val hitBlockType = hitBlock.type
+            if(hitBlockType.name.lowercase().contains("glass")) {
+                hitBlock.breakNaturally()
+                hitBlock.world.playSound(
+                    hitBlock.location,
+                    Sound.BLOCK_GLASS_BREAK,
+                    1f,
+                    1f
+                )
+            }
+        }
 
         bullet.world.spawnParticle(Particle.SMOKE, bullet.location, 3)
         bullet.remove()
