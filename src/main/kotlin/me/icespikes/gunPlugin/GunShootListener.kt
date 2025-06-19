@@ -23,7 +23,6 @@ import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitTask
 import org.bukkit.util.Vector
 import java.util.*
-import kotlin.random.Random
 
 class GunShootListener(private val plugin: JavaPlugin) : Listener {
     private var shootTask: BukkitTask ?= null
@@ -38,9 +37,7 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
 
     private var currentTick = 0L
 
-    init {
-        startTask()
-    }
+    init { startTask() }
 
     private fun startTask() {
         if(shootTask != null) return
@@ -80,41 +77,54 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
         val spawnOffset = direction.clone().multiply(0.8).add(Vector(0.0, -0.2,0.0))
         val spawnLocation = player.eyeLocation.clone().add(spawnOffset)
 
-        val snowBall = player.world.spawn(spawnLocation, Snowball::class.java)
+        val bullet = player.world.spawn(spawnLocation, gun.bulletEntity)
 
-        snowBall.apply{
+        bullet.apply{
+            shooter = player
             velocity = player.eyeLocation.direction.multiply(gun.velocity)
             val speed = velocity.length()
             val calculatedDamage = gun.baseDamage + (speed * gun.damageMultiplier)
             persistentDataContainer.set(damageKey, PersistentDataType.DOUBLE, calculatedDamage)
+            setGravity(false)
         }
 
-        if(!gun.isAutomatic) {
-            val loc = player.location.clone()
-
-            val vertRecoil = if(gun.verticalRecoil == null) loc.pitch
-                            else Random.nextDouble(gun.verticalRecoil.first, gun.verticalRecoil.second)
-            val horizRecoil = if(gun.horizontalRecoil == null) loc.yaw
-                            else Random.nextDouble(gun.horizontalRecoil.first, gun.horizontalRecoil.second)
-
-            loc.pitch += vertRecoil.toFloat()
-            loc.yaw += horizRecoil.toFloat()
-
-            player.teleport(loc)
-        }
+        player.world.playSound(
+            player.location,
+            gun.fireSound,
+            gun.fireVolume,
+            gun.firePitch
+        )
     }
 
     @EventHandler
     fun onSniperShoot(event: PlayerDropItemEvent) {
         val player = event.player
-        val droppedItem = detectGun(event.itemDrop.itemStack)
 
-        if(droppedItem == null) return
-        if(droppedItem == gunRegistry["Sniper"]) shoot(player, droppedItem)
+        val droppedItem = detectGun(event.itemDrop.itemStack) ?: run {
+            Bukkit.getLogger().info("Dropped item not detected")
+            return
+        }
+
+        if(droppedItem == gunRegistry["Sniper"]) {
+            shoot(player, droppedItem)
+            player.sendMessage("Shoot")
+        } else {
+            player.sendMessage("Didn't shoot")
+        }
 
         event.isCancelled = true
+        if(event.isCancelled) player.sendMessage("Event cancelled")
+        else player.sendMessage("Event not cancelled")
+
         focusedPlayers.remove(player.uniqueId)
         removePotionEffects(player)
+
+        player.world.playSound(
+            player.location,
+            droppedItem.fireSound,
+            droppedItem.fireVolume,
+            droppedItem.firePitch
+        )
     }
 
     private fun addPotionEffects(player: Player) {
@@ -249,8 +259,17 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
         val bullet = event.entity as Snowball
         val hitEntity = event.hitEntity as? LivingEntity ?: return
 
+        val shooter = bullet.shooter as? Player ?: return
+        val gun = detectGun(shooter) ?: return
         val damage = bullet.persistentDataContainer.get(damageKey, PersistentDataType.DOUBLE) ?: baseDamage
+
         hitEntity.damage(damage)
+        hitEntity.world.playSound(
+            hitEntity.location,
+            gun.hitSound,
+            gun.hitVolume,
+            gun.hitPitch
+        )
 
         bullet.world.spawnParticle(Particle.SMOKE, bullet.location, 3)
         bullet.remove()
