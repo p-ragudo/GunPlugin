@@ -3,7 +3,6 @@ package me.icespikes.gunPlugin
 import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.entity.Projectile
-import org.bukkit.entity.SmallFireball
 import org.bukkit.entity.Snowball
 import org.bukkit.inventory.ItemStack
 
@@ -17,9 +16,10 @@ data class Gun (
     val firePitch: Float,
 
     val shootDelayTicks: Long,
-    val baseDamage: Double,
-    val damageMultiplier: Double,
-    val velocity: Double, // Standard is 4.5
+    val baseDamage: Float,
+    val damageMultiplier: Float,
+    val velocity: Float, // Standard is 4.5
+    val knockbackFactor: Float, // Pistol / Standard is 0.6 (but need to lessen for automatic guns)
     val isAutomatic: Boolean,
     val needsManualFireDelay: Boolean,
 )
@@ -39,9 +39,10 @@ val gunRegistry = mapOf(
         1.5f,
 
         5L,
-        2.0,
-        1.0,
-        4.5,
+        2.0f,
+        1.0f,
+        4.5f,
+        0.6f,
         false,
         true),
     "SMG" to Gun(
@@ -54,9 +55,10 @@ val gunRegistry = mapOf(
         1.2f,
 
         2L,
-        1.0,
-        1.0,
-        3.0,
+        1.0f,
+        1.0f,
+        3.0f,
+        0.13f,
         true,
         false),
     "Sniper" to Gun(
@@ -69,9 +71,10 @@ val gunRegistry = mapOf(
         1.5f,
 
         0L,
-        50.0,
-        20.0,
-        50.0,
+        50.0f,
+        20.0f,
+        50.0f,
+        5f,
         false,
         false),
 )

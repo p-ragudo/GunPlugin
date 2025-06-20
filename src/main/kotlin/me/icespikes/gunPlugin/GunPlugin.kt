@@ -9,5 +9,6 @@ class GunPlugin : JavaPlugin() {
 
         Bukkit.getPluginManager().registerEvents(GunShootListener(this), this)
         getCommand("give_gun")!!.setExecutor(GiveGunCommand())
+        getCommand("gp")!!.setExecutor(GiveBulletCommand())
     }
 }
