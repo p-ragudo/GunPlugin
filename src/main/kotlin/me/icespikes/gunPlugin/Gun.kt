@@ -10,6 +10,7 @@ data class Gun (
     val name: String,
     val lore: List<String>,
     val bulletEntity: Class<out Projectile>,
+    val rounds: Int,
 
     val fireSound: Sound,
     val fireVolume: Float,
@@ -33,6 +34,7 @@ val gunRegistry = mapOf(
         "Pistol",
         pistolLore,
         Snowball::class.java,
+        17,
 
         Sound.ENTITY_FIREWORK_ROCKET_BLAST,
         1.0f,
@@ -49,6 +51,7 @@ val gunRegistry = mapOf(
         "SMG",
         smgLore,
         Snowball::class.java,
+        50,
 
         Sound.ENTITY_FIREWORK_ROCKET_SHOOT,
         1.2f,
@@ -65,18 +68,19 @@ val gunRegistry = mapOf(
         "Sniper",
         sniperLore,
         Snowball::class.java,
+        4,
 
         Sound.ENTITY_GENERIC_EXPLODE,
         2.0f,
         1.5f,
 
-        0L,
+        30L,
         50.0f,
         20.0f,
         50.0f,
         5f,
         false,
-        false),
+        true),
 )
 
 fun detectGun(player: Player) : Gun? {

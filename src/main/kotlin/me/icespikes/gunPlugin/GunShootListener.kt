@@ -12,7 +12,6 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.entity.PlayerDeathEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.inventory.InventoryOpenEvent
-import org.bukkit.event.inventory.InventoryType
 import org.bukkit.event.player.PlayerDropItemEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerItemHeldEvent
@@ -119,6 +118,10 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
         val sniper = detectGun(droppedItem) ?: return
         if(sniper != gunRegistry["Sniper"]) return
 
+        if(sniper.rounds == 0) {
+            return
+        }
+
         event.isCancelled = true
         event.itemDrop.remove()
         shoot(player, sniper, false)
@@ -136,6 +139,10 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
         if(event.action != Action.LEFT_CLICK_AIR && event.action != Action.LEFT_CLICK_BLOCK) return
         if(!hasBullets(player)) {
             sendBulletCountActionBarMessage(player)
+            return
+        }
+        if(gun.rounds <= 0) {
+            // reload
             return
         }
 
