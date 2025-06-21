@@ -26,7 +26,7 @@ import java.util.*
 class GunShootListener(private val plugin: JavaPlugin) : Listener {
     private var shootTask: BukkitTask ?= null
 
-    private val cooldownTracker = mutableMapOf<UUID, Long>()
+    private val cooldownTracker = mutableMapOf<UUID, GunDelay>()
     private val shootingPlayersAutomatic = mutableSetOf<UUID>()
     private val playerGunMap = mutableMapOf<UUID, Gun>()
 
@@ -43,7 +43,7 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
         shootTask = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
             currentTick++
 
-            for((playerId, nextShootTick) in cooldownTracker.toList().iterator()) {
+            for((playerId, delay) in cooldownTracker.toList().iterator()) {
                 val player = Bukkit.getPlayer(playerId) ?: continue
                 if(!hasBullets(player)) {
                     shootingPlayersAutomatic.remove(playerId)
@@ -59,12 +59,23 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
                     playerGunMap.remove(playerId)
                     continue
                 }
+                if (gun.currentRounds <= 0) {
+                    if (currentTick >= delay.reloadTick) {
+                        gun.currentRounds = gun.magSize
+                        player.playSound(player.location, Sound.ITEM_ARMOR_EQUIP_IRON, 1f, 1f)
+                        sendBulletCountActionBarMessage(player)
+                    } else {
+                        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacy("${ChatColor.RED}Reloading"))
+                        continue
+                    }
+                }
+
 
                 if(!gun.isAutomatic && !gun.needsManualFireDelay) continue
-                if(currentTick < nextShootTick) continue
+                if(currentTick < delay.nextShootTick) continue
                 if(gun.isAutomatic) {
                     shoot(player, gun, true)
-                    cooldownTracker[playerId] = currentTick + gun.shootDelayTicks
+                    cooldownTracker[playerId]!!.nextShootTick = currentTick + gun.shootDelayTicks
                 } else if(gun.needsManualFireDelay) {
                     cooldownTracker.remove(playerId) // Cooldown expired
                 }
@@ -100,6 +111,7 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
             shootingPlayersAutomatic.remove(player.uniqueId)
         } else {
             if(subtractBullet) bulletInventory.amount -= 1
+            gun.currentRounds -= 1
         }
 
         sendBulletCountActionBarMessage(player)
@@ -118,7 +130,7 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
         val sniper = detectGun(droppedItem) ?: return
         if(sniper != gunRegistry["Sniper"]) return
 
-        if(sniper.rounds == 0) {
+        if(sniper.currentRounds == 0) {
             return
         }
 
@@ -141,13 +153,19 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
             sendBulletCountActionBarMessage(player)
             return
         }
-        if(gun.rounds <= 0) {
+        if(gun.currentRounds <= 0) {
             // reload
             return
         }
 
         val playerId = player.uniqueId
-        val nextShootTick = cooldownTracker[playerId]
+        val nextShootTick: Long
+        if(!cooldownTracker.contains(playerId)) {
+            cooldownTracker[playerId] = GunDelay(gun.shootDelayTicks, gun.reloadTicks)
+            nextShootTick = cooldownTracker[playerId]!!.nextShootTick
+        } else {
+            nextShootTick = cooldownTracker[playerId]!!.nextShootTick
+        }
 
         when {
             // Case 1: Semi-auto without manual delay — shoot instantly
@@ -158,9 +176,9 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
 
             // Case 2: Semi-auto with manual delay — shoot only if cooldown expired
             !gun.isAutomatic && gun.needsManualFireDelay -> {
-                if (nextShootTick == null || currentTick >= nextShootTick) {
+                if (currentTick >= nextShootTick) {
                     shoot(player, gun, true)
-                    cooldownTracker[playerId] = currentTick + gun.shootDelayTicks
+                    cooldownTracker[playerId]!!.nextShootTick = currentTick + gun.shootDelayTicks
                     playerGunMap[playerId] = gun
                 }
             }
@@ -169,7 +187,7 @@ class GunShootListener(private val plugin: JavaPlugin) : Listener {
             gun.isAutomatic && !shootingPlayersAutomatic.contains(playerId) -> {
                 shootingPlayersAutomatic.add(playerId)
                 playerGunMap[playerId] = gun
-                cooldownTracker[playerId] = currentTick
+                cooldownTracker[playerId]!!.nextShootTick = currentTick
             }
 
             // Case 4: Automatic and already shooting — stop firing
